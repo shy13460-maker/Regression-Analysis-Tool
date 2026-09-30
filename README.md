@@ -13,7 +13,7 @@
 ## 프로그램 화면
 
 <p align="center">
-  <img src="assets/program_ui.png" alt="회귀분석 프로그램 초기 화면" width="100%">
+  <img src="program_ui.png" alt="회귀분석 프로그램 초기 화면" width="100%">
 </p>
 
 브라우저에서 CSV 또는 Excel 파일을 업로드한 뒤 독립변수(X), 종속변수(Y), 분석할 회귀모델을 선택하여 바로 회귀분석을 수행할 수 있습니다.
@@ -23,7 +23,7 @@
 ## 프로그램 처리 흐름
 
 <p align="center">
-  <img src="assets/workflow.png" alt="회귀분석 프로그램 처리 흐름" width="100%">
+  <img src="workflow.png" alt="회귀분석 프로그램 처리 흐름" width="100%">
 </p>
 
 데이터 입력부터 변수 설정, 회귀계산, 모델 비교, 결과 저장까지 하나의 프로그램에서 연속적으로 수행하도록 구성하였습니다.
@@ -225,7 +225,7 @@ SciPy의 `curve_fit`을 이용하여 모델 파라미터를 반복적으로 조�
 ## 10. 모델 평가 지표
 
 <p align="center">
-  <img src="assets/metrics_guide.png" alt="회귀모델 평가 지표 설명" width="100%">
+  <img src="metrics_guide.png" alt="회귀모델 평가 지표 설명" width="100%">
 </p>
 
 ### 결정계수 R²
@@ -336,7 +336,7 @@ Y 열 : Residuary_Resistance_per_Displacement
 ### 예제 데이터 회귀모델 비교
 
 <p align="center">
-  <img src="assets/regression_example.png" alt="Yacht Hydrodynamics 예제 데이터 회귀모델 비교" width="90%">
+  <img src="regression_example.png" alt="Yacht Hydrodynamics 예제 데이터 회귀모델 비교" width="90%">
 </p>
 
 이 예제에서는 속도에 대응하는 프루드수가 증가함에 따라 잉여저항이 비선형적으로 증가하므로, 선형회귀와 비선형 회귀모델의 차이를 확인하기에 적합합니다.
