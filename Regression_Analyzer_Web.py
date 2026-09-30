@@ -13,20 +13,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import t as student_t
 
 APP_TITLE = "선형·비선형 회귀 분석 프로그램"
-NONE = "(없음)"
-
-MODEL_LABELS = {
-    "Linear": "선형 회귀",
-    "Quadratic": "2차 다항 회귀",
-    "Cubic": "3차 다항 회귀",
-    "Exponential": "지수 회귀",
-    "Logarithmic": "로그 회귀",
-    "Power": "거듭제곱 회귀",
-    "Logistic 4P": "4-모수 로지스틱 회귀",
-}
-
-def model_label(name: str) -> str:
-    return MODEL_LABELS.get(name, name)
+NONE = "(None)"
 
 st.set_page_config(page_title=APP_TITLE, page_icon="📈", layout="wide")
 
@@ -310,7 +297,7 @@ def apply_header(raw: pd.DataFrame, header_row_1based: int) -> pd.DataFrame:
 
 def analysis_groups(data: pd.DataFrame, group_col: str):
     if group_col == NONE:
-        return [("전체", data)]
+        return [("All", data)]
     return [(str(name), frame.copy()) for name, frame in data.groupby(group_col, dropna=False, sort=False)]
 
 
@@ -349,38 +336,6 @@ def build_summary_df(results: list[FitResult]) -> pd.DataFrame:
         })
     df = pd.DataFrame(rows)
     return df.sort_values(["Case", "Best", "AICc"], ascending=[True, False, True]).reset_index(drop=True)
-
-
-def localize_summary_df(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "Model" in out.columns:
-        out["Model"] = out["Model"].map(model_label)
-    return out.rename(columns={
-        "Best": "최적", "Case": "사례", "Model": "모델",
-        "Adjusted R²": "수정 R²", "Equation": "회귀식"
-    })
-
-
-def localize_parameter_df(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "Model" in out.columns:
-        out["Model"] = out["Model"].map(model_label)
-    return out.rename(columns={
-        "Case": "사례", "Model": "모델", "Parameter": "매개변수",
-        "Estimate": "추정값", "Standard Error": "표준오차"
-    })
-
-
-def localize_residual_df(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "Model" in out.columns:
-        out["Model"] = out["Model"].map(model_label)
-    return out.rename(columns={
-        "Case": "사례", "Model": "모델", "Index": "번호",
-        "Observed Y": "관측 Y", "Predicted Y": "예측 Y",
-        "Residual": "잔차", "Standardized Residual": "표준화 잔차",
-        "Outlier": "이상치 후보"
-    })
 
 
 def build_parameter_df(results: list[FitResult]) -> pd.DataFrame:
@@ -427,6 +382,7 @@ def export_excel_bytes(results: list[FitResult], failures: list[dict], data: pd.
         build_parameter_df(results).to_excel(writer, sheet_name="Parameters", index=False)
         build_predictions_df(results).to_excel(writer, sheet_name="All Predictions", index=False)
         build_best_residual_df(results).to_excel(writer, sheet_name="Best Residuals", index=False)
+        build_algorithm_df().to_excel(writer, sheet_name="Algorithm", index=False)
         if failures:
             pd.DataFrame(failures).to_excel(writer, sheet_name="Failed Models", index=False)
         data.to_excel(writer, sheet_name="Input Data", index=False)
@@ -459,13 +415,13 @@ def regression_figure(
             ee = pd.to_numeric(frame[error_col], errors="coerce").to_numpy(float)
             valid = np.isfinite(xx) & np.isfinite(yy) & np.isfinite(ee)
             fig.add_trace(go.Scatter(
-                x=xx[valid], y=yy[valid], mode="markers", name=f"{case} · 원본 데이터",
+                x=xx[valid], y=yy[valid], mode="markers", name=f"{case} data",
                 error_y=dict(type="data", array=np.abs(ee[valid]), visible=True),
                 hovertemplate="X=%{x}<br>Y=%{y}<extra></extra>"
             ))
         else:
             fig.add_trace(go.Scatter(
-                x=base.x, y=base.y, mode="markers", name=f"{case} · 원본 데이터",
+                x=base.x, y=base.y, mode="markers", name=f"{case} data",
                 hovertemplate="X=%{x}<br>Y=%{y}<extra></extra>"
             ))
 
@@ -476,9 +432,9 @@ def regression_figure(
             is_best = best.get(case) is result
             fig.add_trace(go.Scatter(
                 x=x_grid, y=y_grid, mode="lines",
-                name=f"{case} · {model_label(result.model)}{' ★' if is_best else ''}",
+                name=f"{case} · {result.model}{' ★' if is_best else ''}",
                 line=dict(width=4 if is_best else 2),
-                hovertemplate=f"{model_label(result.model)}<br>X=%{{x:.5g}}<br>Y=%{{y:.5g}}<extra></extra>"
+                hovertemplate=f"{result.model}<br>X=%{{x:.5g}}<br>Y=%{{y:.5g}}<extra></extra>"
             ))
             if is_best and show_ci:
                 try:
@@ -487,7 +443,7 @@ def regression_figure(
                         x=np.concatenate([x_grid, x_grid[::-1]]),
                         y=np.concatenate([upper, lower[::-1]]),
                         fill="toself", mode="lines", line=dict(width=0),
-                        opacity=0.15, name=f"{case} · 95% 신뢰구간",
+                        opacity=0.15, name=f"{case} · 95% CI",
                         hoverinfo="skip"
                     ))
                 except Exception:
@@ -502,23 +458,23 @@ def regression_figure(
                 ])
                 fig.add_trace(go.Scatter(
                     x=result.x[idx], y=result.y[idx], mode="markers",
-                    name=f"{case} · 이상치 후보",
+                    name=f"{case} · outlier",
                     marker=dict(symbol="circle-open", size=14, line=dict(width=2)),
                     customdata=custom,
                     hovertemplate=(
-                        "X=%{x:.6g}<br>관측 Y=%{customdata[0]:.6g}"
-                        "<br>예측 Y=%{customdata[1]:.6g}"
-                        "<br>잔차=%{customdata[2]:+.6g}"
-                        "<br>표준화 잔차=%{customdata[3]:+.3f}<extra></extra>"
+                        "X=%{x:.6g}<br>Observed Y=%{customdata[0]:.6g}"
+                        "<br>Predicted Y=%{customdata[1]:.6g}"
+                        "<br>Residual=%{customdata[2]:+.6g}"
+                        "<br>Std. residual=%{customdata[3]:+.3f}<extra></extra>"
                     )
                 ))
 
     fig.update_layout(
-        title="회귀 모델 비교",
+        title="Regression Model Comparison",
         xaxis_title=x_col,
         yaxis_title=y_col,
         hovermode="closest",
-        legend_title="범례",
+        legend_title="Series",
         height=650,
         margin=dict(l=30, r=20, t=60, b=30),
     )
@@ -533,18 +489,18 @@ def residual_figure(results: list[FitResult]):
         custom = np.column_stack([result.x, result.y, std, result.outlier_mask.astype(int)])
         fig.add_trace(go.Scatter(
             x=result.y_hat, y=result.residuals, mode="markers",
-            name=f"{case} · {model_label(result.model)}", customdata=custom,
+            name=f"{case} · {result.model}", customdata=custom,
             hovertemplate=(
-                "X=%{customdata[0]:.6g}<br>관측 Y=%{customdata[1]:.6g}"
-                "<br>예측 Y=%{x:.6g}<br>잔차=%{y:+.6g}"
-                "<br>표준화 잔차=%{customdata[2]:+.3f}<extra></extra>"
+                "X=%{customdata[0]:.6g}<br>Observed Y=%{customdata[1]:.6g}"
+                "<br>Predicted Y=%{x:.6g}<br>Residual=%{y:+.6g}"
+                "<br>Std. residual=%{customdata[2]:+.3f}<extra></extra>"
             )
         ))
     fig.add_hline(y=0, line_dash="dash")
     fig.update_layout(
-        title="잔차 그래프 · 사례별 최적 모델",
-        xaxis_title="예측 Y",
-        yaxis_title="잔차 (관측값 − 예측값)",
+        title="Residual Plot · Best Model per Case",
+        xaxis_title="Predicted Y",
+        yaxis_title="Residual (Observed − Predicted)",
         height=560,
         margin=dict(l=30, r=20, t=60, b=30),
     )
@@ -565,16 +521,113 @@ def run_models(data, x_col, y_col, group_col, selected_models):
     return results, failures
 
 
+
+MODEL_KR = {
+    "Linear": "선형 회귀",
+    "Quadratic": "2차 다항 회귀",
+    "Cubic": "3차 다항 회귀",
+    "Exponential": "지수 회귀",
+    "Logarithmic": "로그 회귀",
+    "Power": "거듭제곱 회귀",
+    "Logistic 4P": "4-모수 로지스틱 회귀",
+}
+
+
+def build_algorithm_df() -> pd.DataFrame:
+    """과제 설명용: 프로그램 내부에서 실제 사용하는 처리 알고리즘 요약."""
+    return pd.DataFrame([
+        {
+            "단계": "1. 데이터 전처리",
+            "알고리즘": "CSV/Excel 읽기 → Header 적용 → X/Y 숫자 변환 → 결측/비수치 제거",
+            "구현": "Pandas",
+        },
+        {
+            "단계": "2. 선형·다항 회귀",
+            "알고리즘": "잔차제곱합(SSE)이 최소가 되도록 회귀계수 계산",
+            "구현": "NumPy polyfit (최소제곱 적합)",
+        },
+        {
+            "단계": "3. 비선형 회귀",
+            "알고리즘": "초기 파라미터에서 시작해 잔차제곱합이 감소하도록 반복 최적화",
+            "구현": "SciPy curve_fit + Trust Region Reflective(TRF)",
+        },
+        {
+            "단계": "4. 모델 평가",
+            "알고리즘": "예측값과 관측값의 잔차로 R², RMSE, MAE, SSE, AIC/AICc/BIC 계산",
+            "구현": "NumPy / Python",
+        },
+        {
+            "단계": "5. 최적 모델 선택",
+            "알고리즘": "계산 가능한 모델 중 AICc 최소 모델 선택, AICc 불가 시 AIC 최소 모델 선택",
+            "구현": "best_results()",
+        },
+        {
+            "단계": "6. 이상치 후보",
+            "알고리즘": "표준화 잔차의 절댓값이 2 이상인 점을 후보로 표시",
+            "구현": "|standardized residual| ≥ 2",
+        },
+        {
+            "단계": "7. 신뢰구간·예측",
+            "알고리즘": "파라미터 공분산과 t 분포로 95% 신뢰구간 근사, 최적 회귀식으로 새 X의 Y 예측",
+            "구현": "Jacobian + covariance + Student t",
+        },
+    ])
+
+
+def render_algorithm_overview(selected_models: list[str] | None = None) -> None:
+    """Streamlit 화면에 과제 제출용 알고리즘 설명을 표시."""
+    st.markdown("### 전체 처리 알고리즘")
+    st.markdown(
+        "**데이터 입력 → 전처리 → 회귀모델 적합 → 예측값 계산 → 잔차·평가지표 계산 "
+        "→ 최적 모델 선택 → 이상치/신뢰구간 확인 → 예측 및 결과 저장**"
+    )
+    st.dataframe(build_algorithm_df(), use_container_width=True, hide_index=True)
+
+    st.markdown("#### 선형·다항 회귀 알고리즘")
+    st.markdown(
+        "선형, 2차, 3차 다항 회귀는 **최소제곱법(Least Squares)** 을 사용한다. "
+        "관측값 `y`와 회귀식의 예측값 `ŷ` 차이인 잔차 `e = y - ŷ`의 제곱합 "
+        "`SSE = Σ(y - ŷ)²`가 최소가 되도록 계수를 계산하며, 프로그램에서는 `numpy.polyfit`을 사용한다. "
+        "2차·3차 모델은 그래프 모양은 곡선이지만 계수에 대해서는 선형인 다항 회귀이다."
+    )
+
+    st.markdown("#### 비선형 회귀 알고리즘")
+    st.markdown(
+        "지수, 로그, 거듭제곱, 4-모수 로지스틱 회귀는 `scipy.optimize.curve_fit`을 사용한다. "
+        "초기 파라미터를 설정한 뒤 **Trust Region Reflective(TRF)** 방식의 비선형 최소제곱 최적화를 반복하여 "
+        "SSE가 작아지는 파라미터를 찾는다. 로그·거듭제곱 모델은 `X > 0` 데이터만 사용한다."
+    )
+
+    st.markdown("#### 최적 모델 선택 알고리즘")
+    st.markdown(
+        "각 모델의 적합이 끝나면 R², 수정 R², RMSE, MAE, SSE, AIC, AICc, BIC를 계산한다. "
+        "프로그램의 **최고 모델(Best model)** 표시는 AICc가 계산 가능한 경우 **AICc가 가장 낮은 모델**, "
+        "그렇지 않은 경우 **AIC가 가장 낮은 모델**을 선택한다."
+    )
+
+    if selected_models:
+        linear_like = [MODEL_KR[m] for m in selected_models if m in {"Linear", "Quadratic", "Cubic"}]
+        nonlinear = [MODEL_KR[m] for m in selected_models if m not in {"Linear", "Quadratic", "Cubic"}]
+        st.markdown("#### 현재 선택된 모델에 적용되는 알고리즘")
+        if linear_like:
+            st.write("- 최소제곱 다항식 적합: " + ", ".join(linear_like))
+        if nonlinear:
+            st.write("- 비선형 최소제곱 최적화(TRF): " + ", ".join(nonlinear))
+
+
 # ---------- UI ----------
 st.title("📈 선형·비선형 회귀 분석 프로그램")
-st.caption("CSV/Excel 실험 데이터를 브라우저에서 바로 분석하는 선형·비선형 회귀 도구")
+st.caption("공개 또는 실험 데이터를 입력하여 선형회귀와 비선형회귀를 수행하고 계산 알고리즘과 결과를 함께 확인하는 웹 프로그램")
 
-with st.expander("사용 순서", expanded=False):
+with st.expander("📌 사용 순서", expanded=False):
     st.markdown(
         "1. CSV 또는 Excel 파일 업로드  →  2. 열 제목 행 확인  →  "
         "3. X/Y 열 선택  →  4. 회귀모델 선택  →  5. 분석 실행  →  "
-        "6. 그래프·잔차·지표 확인 및 Excel 다운로드"
+        "6. 그래프·잔차·지표·알고리즘 확인  →  7. 결과 다운로드"
     )
+
+with st.expander("🧠 프로그램 알고리즘 설명", expanded=False):
+    render_algorithm_overview()
 
 uploaded = st.file_uploader("CSV / Excel 파일 업로드", type=["csv", "xlsx", "xls"])
 
@@ -613,7 +666,7 @@ except Exception as exc:
     st.stop()
 
 if data.empty or len(data.columns) == 0:
-    st.error("열 제목 적용 후 분석 가능한 데이터가 없습니다.")
+    st.error("Header 적용 후 분석 가능한 데이터가 없습니다.")
     st.stop()
 
 columns = list(data.columns)
@@ -631,12 +684,11 @@ with left:
     valid_pairs = int((x_num.notna() & y_num.notna()).sum())
     st.caption(f"유효한 숫자 X-Y 쌍: {valid_pairs:,} / {len(data):,}")
 
-    st.markdown("**회귀 모델 선택**")
+    st.markdown("**회귀모델 선택**")
     selected_models = st.multiselect(
         "분석할 모델",
         list(MODELS.keys()),
-        default=["Linear", "Quadratic", "Cubic", "Exponential"],
-        format_func=model_label
+        default=["Linear", "Quadratic", "Cubic", "Exponential"]
     )
     show_ci = st.checkbox("95% 신뢰구간 표시", value=True)
     show_outliers = st.checkbox("이상치 후보 표시 (|표준화 잔차| ≥ 2)", value=True)
@@ -672,7 +724,7 @@ if not analysis:
 # Avoid showing stale results if the uploaded file changed.
 if analysis.get("file_name") != uploaded.name:
     st.session_state.pop("analysis", None)
-    st.info("새 파일이 선택되었습니다. 회귀 분석 실행을 눌러 다시 분석하세요.")
+    st.info("새 파일이 선택되었습니다. 회귀 분석 실행 버튼을 눌러 다시 분석하세요.")
     st.stop()
 
 results: list[FitResult] = analysis["results"]
@@ -680,10 +732,7 @@ failures: list[dict] = analysis["failures"]
 if not results:
     st.error("모든 모델 분석에 실패했습니다.")
     if failures:
-        fail_df = pd.DataFrame(failures).copy()
-        if "Model" in fail_df.columns:
-            fail_df["Model"] = fail_df["Model"].map(model_label)
-        st.dataframe(fail_df.rename(columns={"Case": "사례", "Model": "모델", "Reason": "실패 사유"}), use_container_width=True)
+        st.dataframe(pd.DataFrame(failures), use_container_width=True)
     st.stop()
 
 st.divider()
@@ -697,11 +746,11 @@ card_cols = st.columns(min(max(len(cases), 1), 4))
 for idx, case in enumerate(cases):
     r = best[case]
     with card_cols[idx % len(card_cols)]:
-        st.metric(f"{case} · 최적 모델", model_label(r.model))
+        st.metric(f"{case} · 최고 모델", MODEL_KR.get(r.model, r.model))
         st.caption(f"R² = {r.r2:.5f} · RMSE = {r.rmse:.5g}")
 
-plot_tab, residual_tab, result_tab, outlier_tab, predict_tab = st.tabs(
-    ["회귀 그래프", "잔차 그래프", "모델 결과", "이상치", "예측"]
+plot_tab, residual_tab, result_tab, outlier_tab, predict_tab, algorithm_tab = st.tabs(
+    ["회귀 플롯", "잔차 플롯", "모델 결과", "이상치", "예측", "알고리즘"]
 )
 
 with plot_tab:
@@ -711,36 +760,33 @@ with plot_tab:
         analysis["show_ci"], analysis["show_outliers"]
     )
     st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
-    st.markdown("**최적 모델 회귀식**")
+    st.markdown("**최고 모델 회귀식**")
     for case, r in best.items():
-        st.code(f"{case} · {model_label(r.model)}: {r.equation}", language=None)
+        st.code(f"{case} · {r.model}: {r.equation}", language=None)
 
 with residual_tab:
     st.plotly_chart(residual_figure(results), use_container_width=True, config={"displaylogo": False})
-    st.caption("잔차 = 관측 Y − 예측 Y. 이상치 후보는 |표준화 잔차| ≥ 2 기준입니다.")
+    st.caption("Residual = Observed Y − Predicted Y. 이상치 후보는 |표준화 잔차| ≥ 2 기준입니다.")
 
 with result_tab:
     st.dataframe(
-        localize_summary_df(summary),
+        summary,
         use_container_width=True,
         hide_index=True,
         column_config={
             "R²": st.column_config.NumberColumn(format="%.6f"),
-            "수정 R²": st.column_config.NumberColumn(format="%.6f"),
+            "Adjusted R²": st.column_config.NumberColumn(format="%.6f"),
             "RMSE": st.column_config.NumberColumn(format="%.6g"),
             "MAE": st.column_config.NumberColumn(format="%.6g"),
             "AICc": st.column_config.NumberColumn(format="%.4f"),
             "BIC": st.column_config.NumberColumn(format="%.4f"),
         }
     )
-    with st.expander("회귀계수 추정값 / 표준오차"):
-        st.dataframe(localize_parameter_df(build_parameter_df(results)), use_container_width=True, hide_index=True)
+    with st.expander("파라미터 추정값 / 표준오차"):
+        st.dataframe(build_parameter_df(results), use_container_width=True, hide_index=True)
     if failures:
         with st.expander(f"실패한 모델 {len(failures)}개"):
-            fail_df = pd.DataFrame(failures).copy()
-            if "Model" in fail_df.columns:
-                fail_df["Model"] = fail_df["Model"].map(model_label)
-            st.dataframe(fail_df.rename(columns={"Case": "사례", "Model": "모델", "Reason": "실패 사유"}), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(failures), use_container_width=True, hide_index=True)
 
 with outlier_tab:
     best_resid = build_best_residual_df(results)
@@ -749,9 +795,9 @@ with outlier_tab:
         st.success("현재 기준(|표준화 잔차| ≥ 2)에서 이상치 후보가 없습니다.")
     else:
         st.warning(f"이상치 후보 {len(outliers)}개가 검출되었습니다.")
-        st.dataframe(localize_residual_df(outliers), use_container_width=True, hide_index=True)
-    with st.expander("최적 모델의 전체 잔차 보기"):
-        st.dataframe(localize_residual_df(best_resid), use_container_width=True, hide_index=True)
+        st.dataframe(outliers, use_container_width=True, hide_index=True)
+    with st.expander("최고 모델의 전체 잔차 보기"):
+        st.dataframe(best_resid, use_container_width=True, hide_index=True)
 
 with predict_tab:
     prediction_x = st.number_input("예측할 X 값", value=0.0, format="%.8g")
@@ -759,11 +805,15 @@ with predict_tab:
         pred_rows = []
         for case, r in best.items():
             if r.spec.positive_x and prediction_x <= 0:
-                pred_rows.append({"사례": case, "모델": model_label(r.model), "예측 Y": "X는 0보다 커야 합니다"})
+                pred_rows.append({"Case": case, "Model": r.model, "Predicted Y": "X must be > 0"})
             else:
                 value = float(r.predict(np.array([prediction_x], dtype=float))[0])
-                pred_rows.append({"사례": case, "모델": model_label(r.model), "예측 Y": value})
+                pred_rows.append({"Case": case, "Model": r.model, "Predicted Y": value})
         st.dataframe(pd.DataFrame(pred_rows), use_container_width=True, hide_index=True)
+
+with algorithm_tab:
+    st.info("이 탭은 과제의 '프로그램 알고리즘 설명'을 위해 실제 코드에 사용된 계산 절차를 정리한 것입니다.")
+    render_algorithm_overview(sorted(set(r.model for r in results), key=list(MODELS.keys()).index))
 
 st.subheader("결과 다운로드")
 excel_bytes = export_excel_bytes(results, failures, analysis["data"])
@@ -787,7 +837,7 @@ with col2:
     )
 
 st.caption(
-    "선형/2차/3차 다항 회귀는 최소제곱법을 사용하고, "
-    "지수/로그/거듭제곱/4-모수 로지스틱 회귀는 비선형 최적화를 사용합니다. "
-    "최적 모델 표시는 AICc(계산 불가 시 AIC)가 가장 낮은 모델 기준입니다."
+    "알고리즘: 선형/2차/3차 다항 회귀는 최소제곱 적합, "
+    "지수/로그/거듭제곱/4-모수 로지스틱 회귀는 SciPy curve_fit의 비선형 최소제곱(TRF) 최적화를 사용합니다. "
+    "최고 모델은 AICc(계산 불가 시 AIC)가 가장 낮은 모델 기준입니다."
 )
